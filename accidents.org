@@ -1,0 +1,228 @@
+
+#+PROPERTY: header-args:R  :session *R* :exports code
+* UK accident data
+
+All the datasets can be found at this [[https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data][web page]]
+There's rather a lot of data there. 
+#+BEGIN_SRC sh :dir /tmp/ :eval no :exports code
+wget data.dft.gov.uk/road-accidents-safety-data/dftRoadSafety_Accidents_2016.zip
+wget data.dft.gov.uk/road-accidents-safety-data/Road-Accident-Safety-Data-Guide.xls
+#+END_SRC
+
+The above will download the 2016 data, and the data guide. 
+Org is great :) 
+
+#+RESULTS:
+
+
+#+BEGIN_SRC R  :exports code
+accidents <- read.csv("dftRoadSafety_Accidents_2016.csv")
+accnms <- tolower(gsub("[[:space:]]", "_", x=names(accidents)))
+names(accidents) <- accnms
+#+END_SRC
+
+- normalising the names to a known format saves a lot of time in the long run, as it makes it easier to switch datasets.
+
+- i also like removing dots and other punctuation, but we don't need to do that now.
+
+** Data Dictionary
+
+- There's an XLS spreadsheet that has lookup tables, so let's start there (as most of the categorical variables are stored as integers in the data)
+
+As I am a plain-text nerd, I begin by shaving yaks.
+In this case, that means installing `readxl` from the tidyverse before I do anything else.
+
+That way, I can vew the various lookup tables as dataframes, and display them in this org file. 
+
+I'm writing these words as I watch `g++` do it's thing, so I have time. 
+yay, compiling finished!
+
+
+#+BEGIN_SRC R :colnames yes
+require(readxl)
+require(dplyr)
+require(tidyverse)
+mutate(as.tibble(excel_sheets("Road-Accident-Safety-Data-Guide.xls")), sheet_number=row_number())
+sheets <- mutate(
+    as.tibble(
+        excel_sheets("Road-Accident-Safety-Data-Guide.xls")
+    ), sheet_number=row_number()
+)
+
+
+#+END_SRC
+
+#+RESULTS:
+| value                       | sheet_number |
+|-----------------------------+--------------|
+| Introduction                |            1 |
+| Export Variables            |            2 |
+| Police Force                |            3 |
+| Accident Severity           |            4 |
+| Day of Week                 |            5 |
+| Local Authority (District)  |            6 |
+| Local Authority (Highway)   |            7 |
+| 1st Road Class              |            8 |
+| Road Type                   |            9 |
+| Junction Detail             |           10 |
+| Junction Control            |           11 |
+| 2nd Road Class              |           12 |
+| Ped Cross - Human           |           13 |
+| Ped Cross - Physical        |           14 |
+| Light Conditions            |           15 |
+| Weather                     |           16 |
+| Road Surface                |           17 |
+| Special Conditions at Site  |           18 |
+| Carriageway Hazards         |           19 |
+| Urban Rural                 |           20 |
+| Police Officer Attend       |           21 |
+| Vehicle Type                |           22 |
+| Towing and Articulation     |           23 |
+| Vehicle Manoeuvre           |           24 |
+| Vehicle Location            |           25 |
+| Junction Location           |           26 |
+| Skidding and Overturning    |           27 |
+| Hit Object in Carriageway   |           28 |
+| Veh Leaving Carriageway     |           29 |
+| Hit Object Off Carriageway  |           30 |
+| 1st Point of Impact         |           31 |
+| Was Vehicle Left Hand Drive |           32 |
+| Journey Purpose             |           33 |
+| Sex of Driver               |           34 |
+| Age Band                    |           35 |
+| Vehicle Propulsion Code     |           36 |
+| Casualty Class              |           37 |
+| Sex of Casualty             |           38 |
+| Age of Casualty             |           39 |
+| Casualty Severity           |           40 |
+| Ped Location                |           41 |
+| Ped Movement                |           42 |
+| Car Passenger               |           43 |
+| Bus Passenger               |           44 |
+| Ped Road Maintenance Worker |           45 |
+| Casualty Type               |           46 |
+| IMD Decile                  |           47 |
+| Home Area Type              |           48 |
+
+ Let's start with road_type, for no particular reason at all.
+
+** Different Cuts
+
+#+BEGIN_SRC R :colnames yes
+road_types  <- read_excel("Road-Accident-Safety-Data-Guide.xls", sheet=10)
+roadtype <- accidents %>% group_by(road_type) %>% summarise(count=n())
+road_types_named <- inner_join(road_types, roadtype, by=c("code" = "road_type")) %>% arrange(desc(count))
+#+END_SRC
+
+#+RESULTS:
+| code | label                             |  count |
+|------+-----------------------------------+--------|
+|    6 | Crossroads                        | 101687 |
+|    3 | T or staggered junction           |  20117 |
+|    1 | Roundabout                        |   8865 |
+|    2 | Mini-roundabout                   |   3117 |
+|    7 | More than 4 arms (not roundabout) |   1435 |
+|    9 | Other junction                    |   1399 |
+|   -1 | Data missing or out of range      |      1 |
+
+- Most accidents occur at crossroads
+- we don't know the denominator for this variable though
+- we can probably approximate this with some kind of traffic data
+- otherwise we can't make any estimates around probability. 
+
+- One Google search later, we find that [[https://www.dft.gov.uk/traffic-counts/download.php][traffic data]] is available. 
+
+- We have some options, we have full data from 2000 to 2017 (which only covers a subset of the 79-present traffic data), or AADF (annual average daily flow)
+
+- Let's grab them both and see what sizes they are before making a decision. 
+
+- Arrghhh, its in a really annoying format.
+- You need to manually select one file to download, and there's no option to download all
+
+- they also only really cover the main road network, and have AADF available for minor roads
+
+- One open question is whether or not the main data covers the smaller roads
+- i suspect not
+
+- anyway, I can't script this (without hacking through the network console or writing a selenium script), so for now I'll just do this the old-fashioned way. 
+
+- Anyway, let's look at some data
+
+#+BEGIN_SRC sh 
+head -1 East+Midlands.csv |sed 's/,/\n/g' | awk 'BEGIN{cnt=0}{print $0, cnt++,$NR}'
+#+END_SRC
+
+#+RESULTS:
+| Year                       |  0 | Year |
+| CP                         |  1 |      |
+| Estimation_method          |  2 |      |
+| Estimation_method_detailed |  3 |      |
+| Region                     |  4 |      |
+| LocalAuthority             |  5 |      |
+| Road                       |  6 |      |
+| RoadCategory               |  7 |      |
+| Easting                    |  8 |      |
+| Northing                   |  9 |      |
+| StartJunction              | 10 |      |
+| EndJunction                | 11 |      |
+| LinkLength_miles           | 12 |      |
+| PedalCycles                | 13 |      |
+| Motorcycles                | 14 |      |
+| CarsTaxis                  | 15 |      |
+| BusesCoaches               | 16 |      |
+| LightGoodsVehicles         | 17 |      |
+| V2AxleRigidHGV             | 18 |      |
+| V3AxleRigidHGV             | 19 |      |
+| V4or5AxleRigidHGV          | 20 |      |
+| V3or4AxleArticHGV          | 21 |      |
+| V5AxleArticHGV             | 22 |      |
+| V6orMoreAxleArticHGV       | 23 |      |
+| AllHGVs                    | 24 |      |
+| AllMotorVehicles           | 25 |      |
+
+- So we have easting and northing
+- these are probably for each road segment
+- the documentation suggests that they are for each section of road between junctions
+- need to check how junctions are handled, as these are where the majority of accidents happen
+- we use a little awk magic to get counts for variable names
+- these allow us to split out particular fields for examination
+
+#+BEGIN_SRC sh
+head East+Midlands.csv | awk -F, '{print $9, $10}'
+#+END_SRC
+
+#+RESULTS:
+| Easting | Northing |
+|  458354 |   270523 |
+|  447940 |   312400 |
+|  446420 |   355300 |
+|  455407 |   270921 |
+|  500000 |   308400 |
+|  489400 |   335000 |
+|  481690 |   355500 |
+|  464770 |   380000 |
+|  455924 |   275000 |
+
+- So I need to convert eastings and northings to lat long
+- mostly for the buzz
+- this is easiest to do with GDAL, which also uses an interface to [[https://proj4.org/][proj4]], which is a transformation library for co-ordinates. 
+
+- first, i'll just convert to spDataFrame and examine the plot, to make sure it makes sense. 
+
+#+BEGIN_SRC R
+accidents <- na.omit(accidents) #there's not very many
+locs <- select(accidents, easting=location_easting_osgr, northing=location_northing_osgr)
+sp_locs <- SpatialPointsDataFrame(na.omit(locs), data=accidents, proj4string = CRS("+init=epsg:27700"))
+#+END_SRC
+
+#+BEGIN_SRC R :results output graphics :exports results :file map.png
+plot(sp_locs)
+#+END_SRC
+
+#+RESULTS:
+[[file:map.png]]
+
+- cool, looks like the UK
+- we now have a spatial dataframe available for analysis. 
+
+
