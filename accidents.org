@@ -226,3 +226,82 @@ plot(sp_locs)
 - we now have a spatial dataframe available for analysis. 
 
 
+#+BEGIN_SRC R
+east_midlands <- read.csv("East+Midlands.csv")
+#+END_SRC
+
+#+BEGIN_SRC R :colnames yes
+names(east_midlands)
+#+END_SRC
+
+#+RESULTS:
+| x                          |
+|----------------------------|
+| Year                       |
+| CP                         |
+| Estimation_method          |
+| Estimation_method_detailed |
+| Region                     |
+| LocalAuthority             |
+| Road                       |
+| RoadCategory               |
+| Easting                    |
+| Northing                   |
+| StartJunction              |
+| EndJunction                |
+| LinkLength_miles           |
+| PedalCycles                |
+| Motorcycles                |
+| CarsTaxis                  |
+| BusesCoaches               |
+| LightGoodsVehicles         |
+| V2AxleRigidHGV             |
+| V3AxleRigidHGV             |
+| V4or5AxleRigidHGV          |
+| V3or4AxleArticHGV          |
+| V5AxleArticHGV             |
+| V6orMoreAxleArticHGV       |
+| AllHGVs                    |
+| AllMotorVehicles           |
+
+#+BEGIN_SRC R :results none
+locs <- select(east_midlands, Easting, Northing)
+sp_em <- SpatialPointsDataFrame(locs, data=east_midlands, proj4string = CRS("+init=epsg:27700"))
+#+END_SRC
+
+#+BEGIN_SRC R :results output graphics :exports results :file em_map.png
+plot(sp_em)
+#+END_SRC
+
+#+RESULTS:
+[[file:em_map.png]]
+
+#+BEGIN_SRC R
+require(httr)
+t <- GET("http://api.dft.gov.uk/v3/trafficcounts/export/region/East+of+England.csv")
+l <- GET("http://api.dft.gov.uk/v3/trafficcounts/export/region/London.csv")
+#+END_SRC
+
+The pattern is pretty easy. 
+There's only 8, so I'm ok with typing those in. 
+
+#+BEGIN_SRC R
+region_vector <- c("East+Midlands", "East+Of+England", "London",
+                   "North+East", "North+West", "Scotland", "South+East",
+                   "South+West", "Wales", "West+Midlands",
+                   "Yorkshire+and+the+Humber")
+#+END_SRC
+http://api.dft.gov.uk/v3/trafficcounts/export/region/Yorkshire+and+the+Humber.csv
+#+RESULTS:
+| East+Midlands            |
+| East+Of+England          |
+| London                   |
+| North+East               |
+| North+West               |
+| Scotland                 |
+| South+East               |
+| South+West               |
+| Wales                    |
+| West+Midlands            |
+| Yorkshire+and+the+Humber |
+
