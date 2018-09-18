@@ -21,6 +21,40 @@ accnms <- tolower(gsub("[[:space:]]", "_", x=names(accidents)))
 names(accidents) <- accnms
 #+END_SRC
 
+#+RESULTS:
+| accident_index                              |
+| location_easting_osgr                       |
+| location_northing_osgr                      |
+| longitude                                   |
+| latitude                                    |
+| police_force                                |
+| accident_severity                           |
+| number_of_vehicles                          |
+| number_of_casualties                        |
+| date                                        |
+| day_of_week                                 |
+| time                                        |
+| local_authority_.district.                  |
+| local_authority_.highway.                   |
+| x1st_road_class                             |
+| x1st_road_number                            |
+| road_type                                   |
+| speed_limit                                 |
+| junction_detail                             |
+| junction_control                            |
+| x2nd_road_class                             |
+| x2nd_road_number                            |
+| pedestrian_crossing.human_control           |
+| pedestrian_crossing.physical_facilities     |
+| light_conditions                            |
+| weather_conditions                          |
+| road_surface_conditions                     |
+| special_conditions_at_site                  |
+| carriageway_hazards                         |
+| urban_or_rural_area                         |
+| did_police_officer_attend_scene_of_accident |
+| lsoa_of_accident_location                   |
+
 - normalising the names to a known format saves a lot of time in the long run, as it makes it easier to switch datasets.
 
 - i also like removing dots and other punctuation, but we don't need to do that now.
@@ -215,6 +249,8 @@ locs <- select(accidents, easting=location_easting_osgr, northing=location_north
 sp_locs <- SpatialPointsDataFrame(na.omit(locs), data=accidents, proj4string = CRS("+init=epsg:27700"))
 #+END_SRC
 
+
+
 #+BEGIN_SRC R :results output graphics :exports results :file map.png
 plot(sp_locs)
 #+END_SRC
@@ -269,6 +305,8 @@ locs <- select(east_midlands, Easting, Northing)
 sp_em <- SpatialPointsDataFrame(locs, data=east_midlands, proj4string = CRS("+init=epsg:27700"))
 #+END_SRC
 
+
+
 #+BEGIN_SRC R :results output graphics :exports results :file em_map.png
 plot(sp_em)
 #+END_SRC
@@ -286,11 +324,25 @@ The pattern is pretty easy.
 There's only 8, so I'm ok with typing those in. 
 
 #+BEGIN_SRC R
-region_vector <- c("East+Midlands", "East+Of+England", "London",
+region_vector <- c("East+Midlands", "East+of+England", "London",
                    "North+East", "North+West", "Scotland", "South+East",
                    "South+West", "Wales", "West+Midlands",
                    "Yorkshire+and+the+Humber")
 #+END_SRC
+
+#+RESULTS:
+| East+Midlands            |
+| East+of+England          |
+| London                   |
+| North+East               |
+| North+West               |
+| Scotland                 |
+| South+East               |
+| South+West               |
+| Wales                    |
+| West+Midlands            |
+| Yorkshire+and+the+Humber |
+
 http://api.dft.gov.uk/v3/trafficcounts/export/region/Yorkshire+and+the+Humber.csv
 #+RESULTS:
 | East+Midlands            |
@@ -305,3 +357,85 @@ http://api.dft.gov.uk/v3/trafficcounts/export/region/Yorkshire+and+the+Humber.cs
 | West+Midlands            |
 | Yorkshire+and+the+Humber |
 
+- got all the files the stupid way to save time. 
+#+BEGIN_SRC R 
+london <- readr::read_csv("London.csv")
+normalise_names <- function(df) {
+    nms <- names(df)
+    normed <- tolower(gsub("[[:space:]]", "_", x=nms))
+    names(df) <- normed
+    df
+}
+#+END_SRC
+
+#+BEGIN_SRC R :colnames yes
+with(london, unique(aadfyear))
+#+END_SRC
+
+#+RESULTS:
+|    x |
+|------|
+| 2000 |
+| 2001 |
+| 2002 |
+| 2003 |
+| 2004 |
+| 2005 |
+| 2006 |
+| 2007 |
+| 2008 |
+| 2009 |
+| 2010 |
+| 2011 |
+| 2012 |
+| 2013 |
+| 2014 |
+| 2015 |
+| 2016 |
+| 2017 |
+
+- 17 years worth of annual average traffic flow
+
+#+BEGIN_SRC R
+require(rgdal)
+#+END_SRC
+
+#+BEGIN_SRC R :results none
+create_sp_df <- function(data, east, north) {
+    data2 <- na.omit(data)
+    locs <- dplyr::select_(data2, east, north)
+    spdf <- sp::SpatialPointsDataFrame(locs, data2, proj4string = rgdal::CRS("+init=epsg:27700"))
+    spdf
+}
+accidents_sp <- create_sp_df(accidents, "location_easting_osgr", "location_northing_osgr")
+#+END_SRC
+
+#+BEGIN_SRC R :results none
+load_aadf_data <- function(files) {
+    csvfiles <- paste0(files, ".csv")
+    d <- purrr::map(csvfiles, readr::read_csv)
+    d
+
+}
+#+END_SRC
+
+- i ended up just downloading the files as it 'twas easier. 
+- we loop over the AADF files and load them into a list
+
+#+BEGIN_SRC R :results none
+aadf <- load_aadf_data(region_vector)
+aadf_df <- bind_rows(aadf)
+aadf_df2 <- select(aadf_df, -Year) #year is mostly missing, aadfyear is mostly full
+aadf_df3 <- filter(aadf_df2, Northing < 2180000) #weirdass north sea point
+aadf_sp <- create_sp_df(aadf_df3, "Easting", "Northing")
+#+END_SRC
+
+- we then do a little cleaning, and create an spDataFrame
+
+- we can then merge (theoretically) with the overall accidents data
+
+#+BEGIN_SRC R :results none
+accold <- read_csv("Accidents7904.csv", na = c("", "NA", "NULL"))
+accold2 <- normalise_names(accold)
+names(accold2) <- gsub("\\(|\\)", "", names(accold2)) #remove parentheses
+#+END_SRC
